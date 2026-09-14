@@ -55,8 +55,12 @@ def ndvi(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
 if __name__ == "__main__":
     df = pd.read_parquet("manifest.parquet")
     july = df[(df["datetime"].dt.year == 2025) & (df["datetime"].dt.month == 7)]
-    scene = july.sort_values("cloud_cover").iloc[0]
-    print(f"scene {scene['scene_id']} cloud {scene['cloud_cover']:.1f}%")
+    full = july[july["nodata_pct"] < 5]
+    scene = full.sort_values("cloud_cover").iloc[0]
+    print(
+        f"scene {scene['scene_id']}  cloud {scene['cloud_cover']:.1f}%  "
+        f"nodata {scene['nodata_pct']:.1f}%"
+    )
 
     # 1. SCL full band. 20 m, 5490x5490 uint8
     t0 = time.perf_counter()
@@ -77,8 +81,11 @@ if __name__ == "__main__":
     dt = time.perf_counter() - t0
     print(f"\nred+nir window read: {dt:.1f}s shape={red.shape} dtype={red.dtype}")
     v = ndvi(red, nir)
-    print(f"NDVI window: mean={np.nanmean(v):.3f} "
-          f"min={np.nanmin(v):.3f} max={np.nanmax(v):.3f}")
+    valid = np.isfinite(v)
+    print(f"valid pixels in window: {100 * valid.mean():.1f}%")
+    if valid.any():
+        print(f"NDVI window: mean={np.nanmean(v):.3f} "
+              f"min={np.nanmin(v):.3f} max={np.nanmax(v):.3f}")
 
     # 3. Red, full band. 10 m, so 10980 x 10980 uint16
     t0 = time.perf_counter()

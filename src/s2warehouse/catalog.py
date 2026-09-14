@@ -23,6 +23,7 @@ def item_to_row(item) -> dict:
         "datetime": p["datetime"],
         "tile": p.get("grid:code"),
         "cloud_cover": p.get("eo:cloud_cover"),
+        "nodata_pct": p.get("s2:nodata_pixel_percentage"),
     }
     for asset_key, band in BANDS.items():
         row[f"href_{band}"] = item.assets[asset_key].href
@@ -56,6 +57,9 @@ if __name__ == "__main__":
     print()
     print("cloud cover:")
     print(df["cloud_cover"].describe())
+    print()
+    print("nodata:")
+    print(df["nodata_pct"].describe())
     df.to_parquet("manifest.parquet", index=False)
     print()
     print("wrote manifest.parquet")
