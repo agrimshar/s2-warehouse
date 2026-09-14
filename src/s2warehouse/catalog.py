@@ -7,6 +7,7 @@ from pystac_client import Client
 
 STAC_URL = "https://earth-search.aws.element84.com/v1"
 COLLECTION = "sentinel-2-l2a"
+TILE = "MGRS-17TPJ"
 
 # earth search asset key -> sentinel 2 band name
 BANDS = {"green": "B03", "red": "B04", "nir": "B08", "scl": "SCL"}
@@ -27,13 +28,16 @@ def item_to_row(item) -> dict:
         row[f"href_{band}"] = item.assets[asset_key].href
     return row
 
-def search_scenes(bbox, start, end, max_cloud=80) -> list[dict]:
+def search_scenes(bbox, start, end, max_cloud=80, tile=TILE) -> list[dict]:
     client = Client.open(STAC_URL)
     search = client.search(
         collections=[COLLECTION],
         bbox=bbox,
         datetime=f"{start}/{end}",
-        query={"eo:cloud_cover": {"lt": max_cloud}},
+        query={
+            "eo:cloud_cover": {"lt": max_cloud},
+            "grid:code": {"eq": tile},
+        },
     )
     return [item_to_row(item) for item in search.items()]
 
