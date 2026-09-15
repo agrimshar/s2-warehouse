@@ -1,9 +1,12 @@
 '''Query Earth Search (STAC) for Sentinel-2 L2A scenes and build a manifest'''
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pandas as pd
 from pystac_client import Client
+
+from s2warehouse.storage import BUCKET, upload
 
 STAC_URL = "https://earth-search.aws.element84.com/v1"
 COLLECTION = "sentinel-2-l2a"
@@ -63,4 +66,8 @@ if __name__ == "__main__":
     df.to_parquet("manifest.parquet", index=False)
     print()
     print("wrote manifest.parquet")
+
+    key = "bronze/manifest/manifest.parquet"
+    upload(Path("manifest.parquet"), key)
+    print(f"uploaded s3://{BUCKET}/{key}")
     
