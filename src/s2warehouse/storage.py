@@ -27,3 +27,21 @@ def upload(local: Path, key: str) -> None:
 def download(key: str, local: Path) -> None:
     s3 = boto3.client("s3", region_name=REGION)
     s3.download_file(BUCKET, key, str(local))
+
+def scene_id_from_key(key: str) -> str:
+    return key.split("scene_id=")[1].split("/")[0]
+
+
+def list_complete_scene_ids() -> list[str]:
+    """Scenes with all four bands in bronze. SCL is written last, so it is the marker."""
+    s3 = boto3.client("s3", region_name=REGION)
+    pages = s3.get_paginator("list_objects_v2").paginate(
+        Bucket=BUCKET, Prefix="bronze/scene_id="
+    )
+    ids = [
+        scene_id_from_key(obj["Key"])
+        for page in pages
+        for obj in page.get("Contents", [])
+        if obj["Key"].endswith("/SCL.tif")
+    ]
+    return sorted(ids)

@@ -1,0 +1,127 @@
+"""Silver: per-cell, per-scene NDVI and NDWI. One Spark task per scene."""
+
+import argparse
+import os
+import sys
+import tempfile
+import time
+from datetime import date
+from pathlib import Path
+
+import boto3
+import numpy as np
+import pandas as pd
+import rasterio
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql import types as T
+from rasterio.session import AWSSession
+
+from s2warehouse.grid import GRID_PREFIX
+from s2warehouse.ingest import MANIFEST_KEY
+from s2warehouse.raster import GDAL_ENV, ndvi, ndwi
+from s2warehouse.storage import BUCKET, bronze_key, download, list_complete_scene_ids
+
+SCHEMA = T.StructType([
+    T.StructField("scene_id", T.StringType(), nullable=False),
+    T.StructField("date", T.DateType(), nullable=False),
+    T.StructField("cell_idx", T.IntegerType(), nullable=False),
+    T.StructField("ndvi_mean", T.FloatType(), nullable=True),
+    T.StructField("ndvi_std", T.FloatType(), nullable=True),
+    T.StructField("ndwi_mean", T.FloatType(), nullable=True),
+    T.StructField("pixel_count", T.IntegerType(), nullable=False),
+    T.StructField("valid_count", T.IntegerType(), nullable=False),
+])
+
+def read_s3_band(key: str) -> np.ndarray:
+    env = rasterio.Env(session=AWSSession(boto3.Session()), **GDAL_ENV)
+    with env, rasterio.open(f"s3://{BUCKET}/{key}") as src:
+        return src.read(1)
+
+def zonal_mean_std(values, cell_index, valid, n):
+    """Per-cell mean and std over valid pixels, plus the valid count per cell."""
+    v = values[valid]
+    i = cell_index[valid]
+    cnt = np.bincount(i, minlength=n)
+    s1 = np.bincount(i, weights=v, minlength=n)
+    s2 = np.bincount(i, weights=v * v, minlength=n)
+    mean = np.full(n, np.nan)
+    np.divide(s1, cnt, out=mean, where=cnt > 0)
+    ex2 = np.full(n, np.nan)
+    np.divide(s2, cnt, out=ex2, where=cnt > 0)
+    std = np.sqrt(np.maximum(ex2 - mean * mean, 0))
+    return mean, std, cnt
+
+def _f(x: float) -> float | None:
+    return None if np.isnan(x) else float(x)
+
+def process_scene(scene_id: str, day: date, n_cells: int) -> list[tuple]:
+    cell_index = read_s3_band(f"{GRID_PREFIX}/cell_index.tif")
+    red = read_s3_band(bronze_key(scene_id, "B04"))
+    nir = read_s3_band(bronze_key(scene_id, "B08"))
+    green = read_s3_band(bronze_key(scene_id, "B03"))
+
+    assigned = cell_index >= 0
+    # nodata only for now; the SCL cloud mask is step 7
+    valid = assigned & (red > 0) & (nir > 0) & (green > 0)
+    ndvi_mean, ndvi_std, valid_count = zonal_mean_std(ndvi(red, nir), cell_index, valid, n_cells)
+    ndwi_mean, _, _ = zonal_mean_std(ndwi(green, nir), cell_index, valid, n_cells)
+    pixel_count = np.bincount(cell_index[assigned], minlength=n_cells)
+
+    return [
+        (scene_id, day, int(c), _f(ndvi_mean[c]), _f(ndvi_std[c]), _f(ndwi_mean[c]),
+         int(pixel_count[c]), int(valid_count[c]))
+        for c in np.flatnonzero(pixel_count > 0)
+    ]
+
+def main() -> None:
+    p = argparse.ArgumentParser()
+    p.add_argument("--out", default="data/silver")
+    p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--wait", action="store_true", help="keep the Spark UI up until Enter")
+    args = p.parse_args()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        download(MANIFEST_KEY, Path(tmp) / "manifest.parquet")
+        manifest = pd.read_parquet(Path(tmp) / "manifest.parquet")
+        download(f"{GRID_PREFIX}/cells.parquet", Path(tmp) / "cells.parquet")
+        n_cells = len(pd.read_parquet(Path(tmp) / "cells.parquet"))
+
+    ready = set(list_complete_scene_ids())
+    m = manifest[manifest.scene_id.isin(ready)].sort_values("datetime")
+    if args.limit:
+        m = m.head(args.limit)
+    scenes = list(zip(m.scene_id, m.datetime.dt.date))
+    print(f"{len(scenes)} complete scenes in bronze, {n_cells} cells")
+
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+    spark = (
+        SparkSession.builder.appName("s2-silver")
+        .master("local[4]")
+        .config("spark.driver.memory", "6g")
+        .config("spark.sql.shuffle.partitions", "8")
+        .getOrCreate()
+    )
+    t0 = time.perf_counter()
+    rdd = spark.sparkContext.parallelize(scenes, numSlices=len(scenes))
+    rows = rdd.flatMap(lambda s: process_scene(s[0], s[1], n_cells))
+    df = spark.createDataFrame(rows, SCHEMA).withColumn(
+        "coverage_pct", F.round(100 * F.col("valid_count") / F.col("pixel_count"), 2)
+    )
+    df.write.mode("overwrite").partitionBy("date").parquet(args.out)
+    print(f"wrote {args.out} in {time.perf_counter() - t0:.0f}s")
+
+    out = spark.read.parquet(args.out)
+    out.groupBy("scene_id").agg(
+        F.count("*").alias("cells"),
+        F.round(F.avg("ndvi_mean"), 3).alias("ndvi"),
+        F.round(F.avg("coverage_pct"), 1).alias("coverage"),
+    ).orderBy("scene_id").show(truncate=False)
+
+    if args.wait:
+        input("Spark UI at http://localhost:4040 - press Enter to stop")
+    spark.stop()
+
+
+if __name__ == "__main__":
+    main()

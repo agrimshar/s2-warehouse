@@ -11,3 +11,10 @@ def test_ndvi_known_values():
     assert v[0, 1] == 0.0
     assert np.isnan(v[1, 0])
     assert v[1, 1] == -0.5
+
+def test_ndwi_known_values():
+    from s2warehouse.raster import ndwi
+    green = np.array([[300, 100]], dtype="uint16")
+    nir = np.array([[100, 300]], dtype="uint16")
+    v = ndwi(green, nir)
+    assert v[0, 0] == 0.5 and v[0, 1] == -0.5

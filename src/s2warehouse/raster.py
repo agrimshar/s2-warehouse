@@ -52,6 +52,15 @@ def ndvi(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
     np.divide(nir - red, denom, out=out, where=denom > 0)
     return out
 
+def ndwi(green: np.ndarray, nir: np.ndarray) -> np.ndarray:
+    """(green - NIR) / (green + NIR). Positive over water. NaN where denominator is zero."""
+    green = green.astype("float32")
+    nir = nir.astype("float32")
+    denom = green + nir
+    out = np.full(green.shape, np.nan, dtype="float32")
+    np.divide(green - nir, denom, out=out, where=denom > 0)
+    return out
+
 if __name__ == "__main__":
     df = pd.read_parquet("manifest.parquet")
     july = df[(df["datetime"].dt.year == 2025) & (df["datetime"].dt.month == 7)]
