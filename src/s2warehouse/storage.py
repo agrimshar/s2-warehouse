@@ -23,3 +23,7 @@ def object_exists(key: str) -> bool:
 def upload(local: Path, key: str) -> None:
     s3 = boto3.client("s3", region_name=REGION)
     s3.upload_file(str(local), BUCKET, key)
+
+def download(key: str, local: Path) -> None:
+    s3 = boto3.client("s3", region_name=REGION)
+    s3.download_file(BUCKET, key, str(local))
