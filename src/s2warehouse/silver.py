@@ -12,6 +12,7 @@ import boto3
 import numpy as np
 import pandas as pd
 import rasterio
+from delta import DeltaTable, configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
@@ -32,6 +33,7 @@ SCHEMA = T.StructType([
     T.StructField("pixel_count", T.IntegerType(), nullable=False),
     T.StructField("valid_count", T.IntegerType(), nullable=False),
 ])
+STAGING = "data/staging/silver"
 
 def read_s3_band(key: str) -> np.ndarray:
     env = rasterio.Env(session=AWSSession(boto3.Session()), **GDAL_ENV)
@@ -74,10 +76,45 @@ def process_scene(scene_id: str, day: date, n_cells: int) -> list[tuple]:
         for c in np.flatnonzero(pixel_count > 0)
     ]
 
+def build_spark() -> SparkSession:
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+    builder = (
+        SparkSession.builder.appName("s2-silver")
+        .master("local[4]")
+        .config("spark.driver.memory", "6g")
+        .config("spark.sql.shuffle.partitions", "8")
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+    )
+    return configure_spark_with_delta_pip(builder).getOrCreate()
+
+
+def upsert(spark: SparkSession, df, path: str) -> None:
+    """Create the Delta table on first run; MERGE on the natural key after that."""
+    if not DeltaTable.isDeltaTable(spark, path):
+        df.write.format("delta").partitionBy("year_month").save(path)
+        return
+    target = DeltaTable.forPath(spark, path)
+    (
+        target.alias("t")
+        .merge(
+            df.alias("s"),
+            "t.year_month = s.year_month AND t.scene_id = s.scene_id "
+            "AND t.cell_idx = s.cell_idx",
+        )
+        .whenMatchedUpdateAll()
+        .whenNotMatchedInsertAll()
+        .execute()
+    )
+
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--out", default="data/silver")
+    p.add_argument("--out", default="data/delta/silver")
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--skew", action="store_true", help="partition by month instead of scene")
     p.add_argument("--wait", action="store_true", help="keep the Spark UI up until Enter")
     args = p.parse_args()
 
@@ -94,29 +131,37 @@ def main() -> None:
     scenes = list(zip(m.scene_id, m.datetime.dt.date))
     print(f"{len(scenes)} complete scenes in bronze, {n_cells} cells")
 
-    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
-    spark = (
-        SparkSession.builder.appName("s2-silver")
-        .master("local[4]")
-        .config("spark.driver.memory", "6g")
-        .config("spark.sql.shuffle.partitions", "8")
-        .getOrCreate()
-    )
+    spark = build_spark()
     t0 = time.perf_counter()
-    rdd = spark.sparkContext.parallelize(scenes, numSlices=len(scenes))
+    if args.skew:
+        keyed = spark.sparkContext.parallelize(scenes).keyBy(lambda s: s[1].strftime("%Y-%m"))
+        rdd = keyed.partitionBy(24).values()
+    else:
+        rdd = spark.sparkContext.parallelize(scenes, numSlices=len(scenes))
     rows = rdd.flatMap(lambda s: process_scene(s[0], s[1], n_cells))
-    df = spark.createDataFrame(rows, SCHEMA).withColumn(
-        "coverage_pct", F.round(100 * F.col("valid_count") / F.col("pixel_count"), 2)
+    df = (
+        spark.createDataFrame(rows, SCHEMA)
+        .withColumn("coverage_pct", F.round(100 * F.col("valid_count") / F.col("pixel_count"), 2))
+        .withColumn("year_month", F.date_format("date", "yyyy-MM"))
     )
-    df.write.mode("overwrite").partitionBy("date").parquet(args.out)
-    print(f"wrote {args.out} in {time.perf_counter() - t0:.0f}s")
 
-    out = spark.read.parquet(args.out)
-    out.groupBy("scene_id").agg(
-        F.count("*").alias("cells"),
-        F.round(F.avg("ndvi_mean"), 3).alias("ndvi"),
-        F.round(F.avg("coverage_pct"), 1).alias("coverage"),
-    ).orderBy("scene_id").show(truncate=False)
+    # Stage first: MERGE reads its source more than once, and recomputing an
+    # RDD source means re-running every scene.
+    spark.sparkContext.setJobDescription("silver: compute to staging")
+    df.write.mode("overwrite").parquet(STAGING)
+    t_compute = time.perf_counter() - t0
+
+    spark.sparkContext.setJobDescription("silver: merge staging into delta")
+    t1 = time.perf_counter()
+    upsert(spark, spark.read.parquet(STAGING), args.out)
+    t_merge = time.perf_counter() - t1
+
+    table = DeltaTable.forPath(spark, args.out).toDF()
+    print(f"compute {t_compute:.0f}s  merge {t_merge:.0f}s")
+    print(f"rows={table.count()}  scenes={table.select('scene_id').distinct().count()}")
+    DeltaTable.forPath(spark, args.out).history(3).select(
+        "version", "operation", "operationMetrics"
+    ).show(truncate=False)
 
     if args.wait:
         input("Spark UI at http://localhost:4040 - press Enter to stop")
