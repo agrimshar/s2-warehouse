@@ -1,0 +1,14 @@
+name: s2_warehouse
+version: "1.0"
+profile: s2_warehouse
+model-paths: ["models"]
+test-paths: ["tests"]
+vars:
+  silver_path: "../data/delta/silver"
+  s3_bucket: "s2-warehouse-agrim-2026"
+models:
+  s2_warehouse:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
