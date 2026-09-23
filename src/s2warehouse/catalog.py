@@ -55,6 +55,7 @@ def build_manifest(bbox=GTA_BBOX, start="2025-01-01", end=None, max_cloud=80):
 if __name__ == "__main__":
     with timed("catalog") as m:
         df = build_manifest()
+        m["scenes"] = len(df)
         print(f"{len(df)} scenes")
         print()
         print("scenes per tile:")
