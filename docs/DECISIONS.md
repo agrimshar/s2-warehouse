@@ -100,3 +100,13 @@ dbt tests: failed stage in 7 days, stage 3x slower than its median and over
 freshness test. Airflow's own retries and task state are the first alert
 layer; this layer catches runs that succeed but are wrong. CI runs dbt parse
 and imports the DAG inside the real Airflow image.
+
+## 2026-09-24 The answer as models; two composites; provisional thresholds
+Summer median NDVI (15 Jun to 31 Aug) ranks the loss, as the question asked.
+Growing-season p90 NDVI (May to Sep) classifies it: a rotated crop field
+still peaks, a construction site does not. Neighbour context (H3 ring 1)
+separates regional drops from local ones. Observations must be >= 70 %
+covered and >= 70 % clear; cells need >= 4 summer observations in both
+years. Label thresholds (peak < 0.35, delta_peak <= -0.2, local excess
+<= -0.1, neighbour drop <= -0.05) are first guesses to be calibrated by the
+basemap spot check in 10b.

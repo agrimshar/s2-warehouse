@@ -62,3 +62,23 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [scene_id, cell_idx]
+  - name: cell_year_composite
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [cell_idx, year]
+  - name: vegetation_change
+    description: One row per qualifying land cell; delta_summer is the answer, label the interpretation.
+    columns:
+      - name: cell_idx
+        data_tests: [unique, not_null]
+      - name: delta_summer
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: -2, max_value: 2, inclusive: true}
+      - name: label
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [conversion, regional, rotation_or_stress, local_unclassified, stable]
