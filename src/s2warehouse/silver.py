@@ -129,6 +129,9 @@ def main() -> None:
     p.add_argument("--replace", action="store_true", help="overwrite the table")
     p.add_argument("--from-staging", action="store_true", help="skip compute, merge staging")
     p.add_argument("--wait", action="store_true", help="keep the Spark UI up until Enter")
+    p.add_argument("--start", default="1900-01-01")
+    p.add_argument("--end", default="2100-01-01")
+    p.add_argument("--compute-only", action="store_true", help="write staging, do not merge")
     args = p.parse_args()
 
     spark = build_spark()
@@ -143,6 +146,9 @@ def main() -> None:
 
         ready = set(list_complete_scene_ids())
         m = manifest[manifest.scene_id.isin(ready)].sort_values("datetime")
+        start = pd.Timestamp(args.start, tz="UTC")
+        end = pd.Timestamp(args.end, tz="UTC")
+        m = m[(m.datetime >= start) & (m.datetime < end)]
         if args.limit:
             m = m.head(args.limit)
         scenes = list(zip(m.scene_id, m.datetime.dt.date))
@@ -165,6 +171,10 @@ def main() -> None:
         )
         spark.sparkContext.setJobDescription("silver: compute to staging")
         df.write.mode("overwrite").parquet(str(STAGING))
+        if args.compute_only:
+            print(f"staged {len(scenes)} scenes, no merge")
+            spark.stop()
+            return
     t_compute = time.perf_counter() - t0
 
     spark.sparkContext.setJobDescription("silver: merge staging into delta")

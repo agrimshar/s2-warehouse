@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError
 
 REGION = "us-west-2"
 BUCKET = "s2-warehouse-agrim-2026"
+MANIFEST_KEY = "bronze/manifest/manifest.parquet"
 
 def bronze_key(scene_id: str, band: str) -> str:
     """Object key for on band of scene in the bronze layer"""

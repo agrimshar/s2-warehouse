@@ -4,3 +4,6 @@ __pycache__/
 *.parquet
 *.tif
 data/
+Dockerfile.airflow
+docker-compose.yaml
+airflow/

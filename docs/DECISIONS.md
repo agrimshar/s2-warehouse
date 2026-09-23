@@ -75,3 +75,19 @@ dim_scene.is_full_tile derives from measured coverage; the STAC nodata figure
 is kept as declared_nodata_pct and a warn-severity test flags disagreement
 above 5 points (one scene, 2025-12-01). Full reprocessing is an overwrite
 with overwriteSchema, keeping the pre-mask version for comparison.
+
+## 2026-09-23 Orchestration on Airflow 3, LocalExecutor, own venv, no Kafka
+Tasks are BashOperators calling the same CLIs used by hand, installed in
+/opt/s2/.venv inside a custom Airflow image so Airflow's dependencies and the
+pipeline's never conflict. A gate task skips days with no scene (exit 99).
+Compute and merge are separate tasks. Kafka dropped: one scene every two to
+three days has no use for a broker; the resume line would have described a
+decoration.
+
+## 2026-09-23 Data intervals, not trigger times; noon UTC lag
+Airflow 3 defaults cron schedules to CronTriggerTimetable, a zero-length
+interval at the trigger time, which made every day look empty. Switched to
+CronDataIntervalTimetable("0 12 * * *"): a run owns the previous calendar
+day and fires 12 h after it closes, giving Earth Search time to index the
+16:00 UTC pass. The first interval starts at the first cron tick on or after
+start_date, so start_date belongs on a tick.

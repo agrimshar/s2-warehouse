@@ -65,3 +65,16 @@ land cell), 2025: 91 observations before, 74 after. The 17 removed dates had
 median NDVI 0.15; the 86 kept dates shifted +0.02. Residual dips on 1 Aug
 and mid Sep show SCL missing haze; the composite uses a median across dates
 for that reason. Chart: docs/cloud_mask_before_after.png.
+
+## Orchestration: rerun and replay, 2026-09-23
+Airflow 3.3.2, LocalExecutor, s2_daily on CronDataIntervalTimetable
+("0 12 * * *"), catchup from 2026-09-01: 21 runs, 15 ended at the gate (no
+scene), 6 ran the full chain (scenes on 4, 7, 11, 12, 14, 17 Sep). The 17 Sep
+scene was not in the warehouse before: found by the catalog task, ingested,
+merged (Inserted 2311, Updated 0) and modelled with no manual action;
+fact_measurement 212832 -> 214133, max date 2026-09-17.
+Cleared and replayed all 21 runs: 10 min 39 s wall, every run re-executed
+(new attempt logs, start times after the clear), every re-merge Updated 2311
+/ Inserted 0, fact_measurement 214133 unchanged. Runs with no scene take 15
+to 20 s, runs with a scene 55 to 65 s. Every task is parameterised by
+data_interval_start/end; nothing reads now().

@@ -1,0 +1,14 @@
+FROM apache/airflow:3.3.2-python3.12
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-17-jre-headless libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN mkdir -p /opt/s2 && chown airflow:root /opt/s2
+USER airflow
+WORKDIR /opt/s2
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+COPY --chown=airflow:root pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY --chown=airflow:root src ./src
+RUN uv sync --frozen --no-dev

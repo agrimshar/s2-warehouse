@@ -13,12 +13,18 @@ from botocore.exceptions import BotoCoreError, ClientError
 from rasterio import Affine
 
 from s2warehouse.raster import GDAL_ENV
-from s2warehouse.storage import BUCKET, bronze_key, download, object_exists, upload
+from s2warehouse.storage import (
+    BUCKET,
+    MANIFEST_KEY,
+    bronze_key,
+    download,
+    object_exists,
+    upload,
+)
 
 BANDS_10M = ["B03", "B04", "B08"]
 BANDS_20M = ["SCL"]
 NODATA = 0
-MANIFEST_KEY = "bronze/manifest/manifest.parquet"
 
 def downsample_2x2(a: np.ndarray, nodata: int = NODATA) -> np.ndarray:
     """Mean of each 2x2 block. All nodata blocks stay as no data"""
@@ -82,7 +88,7 @@ def ingest_scene(row: pd.Series, workdir: Path) -> dict:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--limit", type=int, default=3)
+    p.add_argument("--limit", type=int, default=None)
     p.add_argument("--start", default="2025-01-01")
     p.add_argument("--end", default="2100-01-01")
     args = p.parse_args()
@@ -96,7 +102,7 @@ def main() -> None:
         download(MANIFEST_KEY, workdir / "manifest.parquet")
         df = pd.read_parquet(workdir / "manifest.parquet")
         df = df[(df["datetime"] >= start) & (df["datetime"] < end)]
-        df = df.sort_values("datetime").head(args.limit)
+        if args.limit: df = df.head(args.limit)
         print(f"{len(df)} scenes to check in s3://{BUCKET}")
         for _, row in df.iterrows():
             ts = time.perf_counter()
