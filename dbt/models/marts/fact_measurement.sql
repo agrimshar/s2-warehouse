@@ -1,7 +1,8 @@
 {{ config(
     materialized='incremental',
     unique_key=['scene_id', 'cell_idx'],
-    incremental_strategy='delete+insert'
+    incremental_strategy='delete+insert',
+    on_schema_change='append_new_columns'
 ) }}
 
 select
@@ -13,7 +14,9 @@ select
     m.ndwi_mean,
     m.pixel_count,
     m.valid_count,
-    m.coverage_pct
+    m.coverage_pct,
+    m.observed_count,
+    m.clear_pct
 from {{ ref('stg_measurements') }} as m
 where m.valid_count > 0
 {% if is_incremental() %}

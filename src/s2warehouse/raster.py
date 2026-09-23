@@ -12,6 +12,9 @@ GDAL_ENV = {
     "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif",
     "GDAL_HTTP_MULTIPLX": "YES",
     "VSI_CACHE": "TRUE",
+    "GDAL_HTTP_TIMEOUT": "60",
+    "GDAL_HTTP_MAX_RETRY": "5",
+    "GDAL_HTTP_RETRY_DELAY": "2",
 }
 
 SCL_CLASSES = {
@@ -28,6 +31,8 @@ SCL_CLASSES = {
     10: "thin_cirrus",
     11: "snow"
 }
+
+SCL_KEEP = (4, 5, 6, 7)
 
 def read_band(href: str, window: Window | None = None) -> tuple[np.ndarray, dict]:
     """Read on band, or one window if it. Returns (array, metadata)"""

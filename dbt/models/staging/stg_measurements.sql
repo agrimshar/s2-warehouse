@@ -8,5 +8,7 @@ select
     pixel_count,
     valid_count,
     coverage_pct,
-    year_month
+    year_month,
+    observed_count,
+    clear_pct
 from delta_scan('{{ var("silver_path") }}')

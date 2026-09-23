@@ -1,6 +1,6 @@
 import numpy as np
 
-from s2warehouse.silver import zonal_mean_std
+from s2warehouse.silver import pixel_masks, zonal_mean_std
 from s2warehouse.storage import scene_id_from_key
 
 
@@ -18,3 +18,13 @@ def test_zonal_mean_std():
 def test_scene_id_from_key():
     key = "bronze/scene_id=S2B_17TPJ_20250704_0_L2A/SCL.tif"
     assert scene_id_from_key(key) == "S2B_17TPJ_20250704_0_L2A"
+
+def test_pixel_masks():
+    red = np.array([[100, 100], [0, 100]], dtype="uint16")
+    nir = np.array([[300, 300], [300, 300]], dtype="uint16")
+    green = np.array([[200, 200], [200, 200]], dtype="uint16")
+    scl = np.array([[4, 9], [4, 6]], dtype="uint8")
+    assigned = np.ones((2, 2), dtype=bool)
+    observed, valid = pixel_masks(red, nir, green, scl, assigned)
+    assert observed.tolist() == [[True, True], [False, True]]
+    assert valid.tolist() == [[True, False], [False, True]]

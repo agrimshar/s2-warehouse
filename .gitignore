@@ -8,6 +8,10 @@ wheels/
 *.parquet
 *.tif
 data/
+data/warehouse.duckdb
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
 
 # Virtual environments
 .venv

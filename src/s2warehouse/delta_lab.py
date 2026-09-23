@@ -10,7 +10,7 @@ from pyspark.errors import AnalysisException
 from pyspark.sql import Row
 from pyspark.sql import functions as F
 
-from s2warehouse.silver import build_spark
+from s2warehouse.silver import SILVER, build_spark
 
 
 def detail(spark, path: str) -> tuple[int, int]:
@@ -26,7 +26,7 @@ def cell_query(spark, path: str, cell: int) -> tuple[int, float]:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--path", default="data/delta/silver")
+    p.add_argument("--path", default=str(SILVER))
     p.add_argument("--cell", type=int, default=1000)
     p.add_argument("--max-file-bytes", type=int, default=200_000)
     p.add_argument("--enable-dv", action="store_true")
