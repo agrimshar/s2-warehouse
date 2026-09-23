@@ -91,3 +91,12 @@ CronDataIntervalTimetable("0 12 * * *"): a run owns the previous calendar
 day and fires 12 h after it closes, giving Earth Search time to index the
 16:00 UTC pass. The first interval starts at the first cron tick on or after
 start_date, so start_date belongs on a tick.
+
+## 2026-09-24 Observability as a table, alerts as tests
+Each stage appends one JSON line (run_id, stage, seconds, status, counts) to
+data/metrics/stage_runs.jsonl; dbt exposes it as ops_stage_runs. Alerts are
+dbt tests: failed stage in 7 days, stage 3x slower than its median and over
+60 s, newest scene under 10 % clear; all warn severity, plus the error-level
+freshness test. Airflow's own retries and task state are the first alert
+layer; this layer catches runs that succeed but are wrong. CI runs dbt parse
+and imports the DAG inside the real Airflow image.

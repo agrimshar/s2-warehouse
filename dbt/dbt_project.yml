@@ -6,9 +6,12 @@ test-paths: ["tests"]
 vars:
   silver_path: "../data/delta/silver"
   s3_bucket: "s2-warehouse-agrim-2026"
+  metrics_path: "../data/metrics/stage_runs.jsonl"
 models:
   s2_warehouse:
     staging:
-      +materialized: view
+      +materialized: table
     marts:
+      +materialized: table
+    ops:
       +materialized: table

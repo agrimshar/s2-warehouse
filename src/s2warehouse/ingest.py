@@ -12,6 +12,7 @@ import rasterio
 from botocore.exceptions import BotoCoreError, ClientError
 from rasterio import Affine
 
+from s2warehouse.metrics import timed
 from s2warehouse.raster import GDAL_ENV
 from s2warehouse.storage import (
     BUCKET,
@@ -97,23 +98,26 @@ def main() -> None:
 
     t0 = time.perf_counter()
     results = []
-    with tempfile.TemporaryDirectory() as tmp:
-        workdir = Path(tmp)
-        download(MANIFEST_KEY, workdir / "manifest.parquet")
-        df = pd.read_parquet(workdir / "manifest.parquet")
-        df = df[(df["datetime"] >= start) & (df["datetime"] < end)]
-        if args.limit: df = df.head(args.limit)
-        print(f"{len(df)} scenes to check in s3://{BUCKET}")
-        for _, row in df.iterrows():
-            ts = time.perf_counter()
-            r = ingest_scene(row, workdir)
-            r["seconds"] = round(time.perf_counter() - ts, 1)
-            print(f"  {r['scene_id']}  wrote={r['written']} skipped={r['skipped']}  {r['seconds']}s")
-            results.append(r)
+    with timed("ingest", start=args.start, end=args.end) as m:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            download(MANIFEST_KEY, workdir / "manifest.parquet")
+            df = pd.read_parquet(workdir / "manifest.parquet")
+            df = df[(df["datetime"] >= start) & (df["datetime"] < end)]
+            if args.limit: df = df.head(args.limit)
+            print(f"{len(df)} scenes to check in s3://{BUCKET}")
+            for _, row in df.iterrows():
+                ts = time.perf_counter()
+                r = ingest_scene(row, workdir)
+                r["seconds"] = round(time.perf_counter() - ts, 1)
+                print(f"  {r['scene_id']}  wrote={r['written']} skipped={r['skipped']}  {r['seconds']}s")
+                results.append(r)
 
-    s = pd.DataFrame(results)
-    print(f"\nscenes={len(s)} bands_written={s['written'].sum()} "
-          f"bands_skipped={s['skipped'].sum()} total={time.perf_counter() - t0:.0f}s")
+        written = sum(r["written"] for r in results)
+        skipped = sum(r["skipped"] for r in results)
+        m.update(scenes=len(results), bands_written=written, bands_skipped=skipped)
+        print(f"\nscenes={len(results)} bands_written={written} "
+            f"bands_skipped={skipped} total={time.perf_counter() - t0:.0f}s")
 
 if __name__ == "__main__":
     main()

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from s2warehouse.metrics import record
 from s2warehouse.storage import MANIFEST_KEY, download
 
 
@@ -24,6 +25,7 @@ def main() -> None:
     end = pd.Timestamp(args.end, tz="UTC")
     n = int(((df["datetime"] >= start) & (df["datetime"] < end)).sum())
     print(f"{n} scenes in [{args.start}, {args.end})")
+    record("gate", 0.0, "skip" if n == 0 else "ok", start=args.start, end=args.end, scenes=n)
     if n == 0:
         sys.stdout.flush()
         os._exit(99)

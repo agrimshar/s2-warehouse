@@ -3,6 +3,8 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      S2_BUCKET: ci-placeholder
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -10,3 +12,16 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run pytest
+      - run: cd dbt && uv run dbt deps && uv run dbt parse
+  dag-import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f Dockerfile.airflow -t s2-airflow .
+      - run: |
+          docker run --rm -v "$PWD/airflow/dags:/opt/airflow/dags" s2-airflow python -c "
+          from airflow.models.dagbag import DagBag
+          b = DagBag('/opt/airflow/dags', include_examples=False)
+          assert not b.import_errors, b.import_errors
+          assert 's2_daily' in b.dag_ids, b.dag_ids
+          print('dags ok:', b.dag_ids)"

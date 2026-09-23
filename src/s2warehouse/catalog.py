@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 from pystac_client import Client
 
+from s2warehouse.metrics import timed
 from s2warehouse.storage import BUCKET, upload
 
 STAC_URL = "https://earth-search.aws.element84.com/v1"
@@ -52,22 +53,23 @@ def build_manifest(bbox=GTA_BBOX, start="2025-01-01", end=None, max_cloud=80):
     return df.sort_values("datetime").reset_index(drop=True)
 
 if __name__ == "__main__":
-    df = build_manifest()
-    print(f"{len(df)} scenes")
-    print()
-    print("scenes per tile:")
-    print(df.groupby("tile").size())
-    print()
-    print("cloud cover:")
-    print(df["cloud_cover"].describe())
-    print()
-    print("nodata:")
-    print(df["nodata_pct"].describe())
-    df.to_parquet("manifest.parquet", index=False)
-    print()
-    print("wrote manifest.parquet")
+    with timed("catalog") as m:
+        df = build_manifest()
+        print(f"{len(df)} scenes")
+        print()
+        print("scenes per tile:")
+        print(df.groupby("tile").size())
+        print()
+        print("cloud cover:")
+        print(df["cloud_cover"].describe())
+        print()
+        print("nodata:")
+        print(df["nodata_pct"].describe())
+        df.to_parquet("manifest.parquet", index=False)
+        print()
+        print("wrote manifest.parquet")
 
-    key = "bronze/manifest/manifest.parquet"
-    upload(Path("manifest.parquet"), key)
-    print(f"uploaded s3://{BUCKET}/{key}")
+        key = "bronze/manifest/manifest.parquet"
+        upload(Path("manifest.parquet"), key)
+        print(f"uploaded s3://{BUCKET}/{key}")
     
