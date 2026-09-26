@@ -12,6 +12,6 @@ data/warehouse.duckdb
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
-
+.env 
 # Virtual environments
 .venv
