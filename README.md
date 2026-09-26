@@ -1,30 +1,22 @@
 # s2-warehouse
 
-A satellite measurement warehouse: Sentinel-2 imagery over Toronto and the GTA
-(tile MGRS-17TPJ, Jan 2025 to present) turned into a tested, incrementally
-updated table of vegetation indices per H3 cell per date, then used to answer
+Sentinel-2 imagery over Toronto and the GTA
+(tile MGRS-17TPJ) turned into an incrementally
+updated table of vegetation indices per H3 cell per date used to answer
 one question:
 
-> Where in the GTA did vegetation decrease between summer 2025 and summer 2026,
-> and is each loss land conversion or a bad season?
+> Where in the GTA did vegetation decrease between summer 2025 and summer 2026?
 
 ## The answer so far
 
-- Summer 2026 was greener than 2025 across the tile (median summer-NDVI change
-  +0.037 over 1,345 land cells; 10th percentile -0.003). The "bad season"
-  hypothesis is empty for this year.
-- One large local loss: cell 990 near Bolton / Caledon East, summer NDVI
-  0.72 -> 0.37 with unchanged neighbours and a 2026 growing-season peak of
-  only 0.46. TODO: spot-check verdict from Sentinel-2 true colour.
-- Crop rotation on the rural fringe produces summer drops of 0.2 with no land
-  change; the classifier separates it by whether the growing-season peak held.
-- TODO: map of the top losses (docs/map.html), spot check (docs/spot_check.md).
+- Summer 2026 was greener than 2025 across the tile (median summer NDVI change +0.037 over 1,345 land cells with 10th percentile -0.003). 
+- One large local loss near Bolton / Caledon East with summer NDVI
+  0.72 -> 0.37 with unchanged neighbours and a 2026 growing-season peak of only 0.46. 
+- Crop rotation on the rural fringe produces summer drops of 0.2 with no land change; the classifier separates it by whether the growing-season peak held.
 
 ![Cloud masking, before and after](docs/cloud_mask_before_after.png)
 
-*The same cell, 2025. Grey: nodata mask only. Green: SCL cloud mask. The 17
-removed dates had median NDVI 0.15, a forest reading as bare ground on cloudy
-days.*
+*The same cell, 2025. Grey: nodata mask only. Green: SCL cloud mask. The 17 removed dates had median NDVI 0.15, a forest reading as bare ground on cloudy days.*
 
 ## What is built
 
@@ -41,15 +33,14 @@ flowchart LR
 
 | Layer | What | Size |
 |---|---|---|
-| Manifest | scene list from STAC, cloud < 80 % | 159 scenes |
-| Bronze | B03, B04, B08, SCL per scene, 20 m, S3 | ~19 GB |
+| Manifest | scene list from STAC | 159 scenes |
+| Bronze | 20m B03, B04, B08, SCL per scene | ~19 GB |
 | Grid | H3 res-7 cell index raster + cells table | 2,621 cells, 1,345 land |
 | Silver | Delta table, one row per cell per scene | 363k rows, 6 MB |
 | Gold | star schema in DuckDB via dbt | 214k fact rows |
 | Tests | pytest + dbt | 13 unit, 40 data tests |
 
-Stack: Python 3.12, rasterio, h3, PySpark 4.2, Delta Lake 4.4 (open source,
-local), dbt-duckdb, Airflow 3.3 in Docker Compose, S3, GitHub Actions.
+Stack: Python 3.12, rasterio, h3, PySpark 4.2, Delta Lake 4.4, dbt-duckdb, Airflow 3.3 in Docker Compose, S3, GitHub Actions.
 
 
 ## Run it
@@ -79,5 +70,4 @@ docker compose up airflow-init && docker compose up -d   # http://localhost:8080
 src/s2warehouse/   catalog, ingest, grid, silver, delta_lab, gate, metrics, ...
 dbt/               staging, marts, ops models and tests
 airflow/dags/      s2_daily.py
-docs/              proofs, charts, lineage, spot check
 ```
